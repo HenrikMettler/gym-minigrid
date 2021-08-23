@@ -7,6 +7,9 @@ from gym import error, spaces, utils
 from gym.utils import seeding
 from .rendering import *
 
+# punishment when agent touches new type of object SAND
+SAND_PUNISHMENT = -0.1
+
 # Size in pixels of a tile in the full-scale human view
 TILE_PIXELS = 32
 
@@ -47,6 +50,7 @@ OBJECT_TO_IDX = {
     'goal'          : 8,
     'lava'          : 9,
     'agent'         : 10,
+    'sand'          : 11,
 }
 
 IDX_TO_OBJECT = dict(zip(OBJECT_TO_IDX.values(), OBJECT_TO_IDX.keys()))
@@ -142,6 +146,8 @@ class WorldObj:
             v = Goal()
         elif obj_type == 'lava':
             v = Lava()
+        elif obj_type == 'sand':
+            v = Sand()
         else:
             assert False, "unknown object type in decode '%s'" % obj_type
 
@@ -209,6 +215,25 @@ class Wall(WorldObj):
 
     def render(self, img):
         fill_coords(img, point_in_rect(0, 1, 0, 1), COLORS[self.color])
+
+class Sand(WorldObj):
+    def __init__(self):
+        super().__init__('sand', color='yellow')
+
+    def can_overlap(self):
+        return True
+
+    def render(self, img):
+        fill_coords(img, point_in_rect(0, 1, 0, 1), COLORS[self.color])
+
+        # Little waves
+        for i in range(3):
+            ylo = 0.3 + 0.2 * i
+            yhi = 0.4 + 0.2 * i
+            fill_coords(img, point_in_line(0.1, ylo, 0.3, yhi, r=0.03), (150, 75, 0))
+            fill_coords(img, point_in_line(0.3, yhi, 0.5, ylo, r=0.03), (150, 75, 0))
+            fill_coords(img, point_in_line(0.5, ylo, 0.7, yhi, r=0.03), (150, 75, 0))
+            fill_coords(img, point_in_line(0.7, yhi, 0.9, ylo, r=0.03), (150, 0, 0))
 
 class Door(WorldObj):
     def __init__(self, color, is_open=False, is_locked=False):
@@ -769,6 +794,7 @@ class MiniGridEnv(gym.Env):
             'box'           : 'B',
             'goal'          : 'G',
             'lava'          : 'V',
+            'sand'          : 'S',
         }
 
         # Short string for opened door
@@ -822,6 +848,13 @@ class MiniGridEnv(gym.Env):
         """
 
         return 1 - 0.9 * (self.step_count / self.max_steps)
+
+    def _sand_punishment(self):
+        """
+        Reward (resp. punishment) received when touching new type of object SAND
+        """
+        return SAND_PUNISHMENT
+
 
     def _rand_int(self, low, high):
         """
@@ -1127,6 +1160,8 @@ class MiniGridEnv(gym.Env):
                 reward = self._reward()
             if fwd_cell != None and fwd_cell.type == 'lava':
                 done = True
+            if fwd_cell != None and fwd_cell.type == 'sand':
+                reward = self._sand_punishment()
 
         # Pick up an object
         elif action == self.actions.pickup:
