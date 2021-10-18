@@ -157,3 +157,18 @@ class DynamicMiniGrid(MiniGridEnv):
             return False
 
         return is_solvable()
+
+    def respawn(self):
+        """ alternative to the reset method (which initializes an empty grid at every timestep"""
+        self.agent_pos = self.agent_start_pos
+        self.agent_dir = self.agent_start_dir
+
+        # Item picked up, being carried, initially nothing
+        self.carrying = None
+
+        # Step count since episode start
+        self.step_count = 0
+
+        # Return first observation
+        obs = self.gen_obs()
+        return obs
