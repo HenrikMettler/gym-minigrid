@@ -37,24 +37,19 @@ class DynamicMiniGrid(MiniGridEnv):
 
         self.mission = "get to the green goal square"
 
-    def alter(self, prob_array, visibility_check=True):
+    def alter(self, prob_dict, visibility_check=True):
         """
         Changes a single element of the environment.
 
-        :param prob_array: numpy.Array. array of probabilties for each type of altering
-            (change start or goal position, add wall/lava) prob_array[0]: change start pos;
-            prob_array[1]: change goal position; prob_array[2] add wall at random (allowed) location
-            prob_array[3]: add lava at random location.
+        :param prob_dict: dict. Dictionary of probabilties for each type of altering
+            (change start or goal position, add wall/lava). Elements must sum to 1
         :param visibility_check: bool. If true, checks whether the agent can see the reward
             at the start and rejects such a solution.
         :return: boolean. True if the environment can be solved empirically within 10'000 steps.
         """
 
-        if np.sum(prob_array) != 1.0:
+        if sum(prob_dict.values()) != 1.0:
             raise ValueError('Probabilities do not sum to 1')
-
-        if len(prob_array) != 5:
-            raise ValueError('Prob array must be of length 4: start, goal, wall, sand, lava')
 
         def alter_start_pos():
 
@@ -114,22 +109,23 @@ class DynamicMiniGrid(MiniGridEnv):
 
         random_float = self.np_random.uniform()
 
-        if random_float < prob_array[0]:
+        if random_float < prob_dict["alter_start_pos"]:
             alter_start_pos()
 
-        elif random_float < np.sum(prob_array[0:2]):
+        elif random_float < prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
             alter_goal_pos()
 
-        elif random_float < np.sum(prob_array[0:3]):
+        elif random_float < prob_dict["wall"] + prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
             set_or_remove_obj(Wall())
-        elif random_float < np.sum(prob_array[0:4]):
-            set_or_remove_obj(Sand())
-        else:
+
+        elif random_float < prob_dict["lava"] + prob_dict["wall"] + prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
             set_or_remove_obj(Lava())
+        else:
+            set_or_remove_obj(Sand())
 
         def is_solvable():
             # empirical check: let a random agent take max_steps and see if it visited the goal
-            max_steps = 10000
+            max_steps = 5000
 
             if self.height * self.width > 100:
                 warnings.warn(f"Solvability takes {max_steps} with a random agent, "
