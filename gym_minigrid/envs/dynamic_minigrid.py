@@ -96,11 +96,14 @@ class DynamicMiniGrid(MiniGridEnv):
             pos = self.agent_start_pos
             dir = self.agent_start_dir
             solvable = False
-            while pos == self.agent_start_pos or not solvable:
+            n_tries_max = 10*self.grid.width*self.grid.height
+            n_tries = 0
+            while (pos == self.agent_start_pos or not solvable) and n_tries < n_tries_max:
+                n_tries += 1
                 new_pos = (self.np_random.randint(1, self.height - 1), # 1, -1 to avoid boarders
                            self.np_random.randint(1, self.width - 1))
                 new_dir = self.np_random.randint(0, 4)  # 4 possible directions
-                if self.grid.get(*new_pos) is not None or new_pos == pos: # check field is empty and agent is not there
+                if self.grid.get(*new_pos) is not None or new_pos == pos: # check field is empty and agent is not already there
                     continue
                 if visibility_check and goal_in_view(pos, new_pos, dir, new_dir):
                     continue
@@ -111,10 +114,15 @@ class DynamicMiniGrid(MiniGridEnv):
                 self.agent_dir = new_dir
                 solvable = is_solvable()
 
+            if n_tries == n_tries_max:
+                raise Warning(f"Could not alter the agent start position "
+                              f"in a {n_tries_max} trials. Return without change")
+
         def alter_goal_pos():
             goal_pos = self.goal_pos
-            solvable = is_solvable
-            while goal_pos == self.goal_pos or not solvable:
+            n_tries_max = 10*self.grid.width*self.grid.height
+            n_tries = 0
+            while (goal_pos == self.goal_pos or not is_solvable()) and n_tries < n_tries_max:
                 new_goal_pos = (self.np_random.randint(1, self.height-1),
                             self.np_random.randint(1, self.width-1))
                 if self.grid.get(*new_goal_pos) is not None or new_goal_pos == self.agent_start_pos:
@@ -124,7 +132,15 @@ class DynamicMiniGrid(MiniGridEnv):
                 self.goal_pos = new_goal_pos  # change the attribute
                 self.grid.set(*new_goal_pos, Goal())  # change the actual element in the grid
                 self.grid.set(*goal_pos, None)  # remove the previous goal
-                solvable = is_solvable()
+                if not is_solvable():
+                    # revert the change
+                    self.goal_pos = goal_pos
+                    self.grid.set(*goal_pos, Goal())
+                    self.grid.set(*new_goal_pos, None)
+
+            if n_tries == n_tries_max:
+                raise Warning("Could not alter the agent start position "
+                              "in a reasonable amount of trials. Return without change")
 
         def set_or_remove_obj(obj):
 
