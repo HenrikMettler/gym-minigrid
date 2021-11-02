@@ -39,89 +39,19 @@ class DynamicMiniGrid(MiniGridEnv):
 
     def alter(self, prob_dict, visibility_check=True):
         """
-        Changes a single element of the environment.
+        Changes a single element of the environment. Automatically checks whether the environment
+        can be (empirically in 5000 random steps) solved.
+        Applies another change of the same alteration if environment is not solvable.
 
         :param prob_dict: dict. Dictionary of probabilties for each type of altering
             (change start or goal position, add wall/lava). Elements must sum to 1
         :param visibility_check: bool. If true, checks whether the agent can see the reward
             at the start and rejects such a solution.
-        :return: boolean. True if the environment can be solved empirically within 10'000 steps.
+        :return: None
         """
 
         if sum(prob_dict.values()) != 1.0:
             raise ValueError('Probabilities do not sum to 1')
-
-        def alter_start_pos():
-
-            def goal_in_view(pos, new_pos, dir, new_dir):
-                self.agent_pos = new_pos
-                self.agent_dir = new_dir
-                return_value = self.in_view(*self.goal_pos)
-                # reset the agent after check
-                self.agent_pos = pos
-                self.agent_dir = dir
-                return return_value
-
-            pos = self.agent_start_pos
-            dir = self.agent_start_dir
-            while pos == self.agent_start_pos:
-                new_pos = (self.np_random.randint(1, self.height - 1), # 1, -1 to avoid boarders
-                           self.np_random.randint(1, self.width - 1))
-                new_dir = self.np_random.randint(0, 4)  # 4 possible directions
-                if self.grid.get(*new_pos) is not None or new_pos == pos: # check field is empty and agent is not there
-                    continue
-                if visibility_check and goal_in_view(pos, new_pos, dir, new_dir):
-                    continue
-                # set the new pos & dir if accepted
-                self.agent_start_pos = new_pos
-                self.agent_pos = new_pos
-                self.agent_start_dir = new_dir
-                self.agent_dir = new_dir
-
-        def alter_goal_pos():
-            goal_pos = self.goal_pos
-            while goal_pos == self.goal_pos:
-                new_goal_pos = (self.np_random.randint(1, self.height-1),
-                            self.np_random.randint(1, self.width-1))
-                if self.grid.get(*new_goal_pos) is not None or new_goal_pos == self.agent_start_pos:
-                    continue
-                if visibility_check and self.in_view(*new_goal_pos):
-                    continue
-                self.goal_pos = new_goal_pos  # change the attribute
-                self.grid.set(*new_goal_pos, Goal())  # change the actual element in the grid
-                self.grid.set(*goal_pos, None)  # remove the previous goal
-
-        def set_or_remove_obj(obj):
-
-            while True:
-                rand_pos = (self.np_random.randint(1, self.height-1),
-                            self.np_random.randint(1, self.width-1))
-
-                if rand_pos == self.agent_start_pos or rand_pos == self.goal_pos:
-                    continue
-
-                if self.grid.get(*rand_pos) == obj:
-                    # remove obj
-                    self.grid.set(*rand_pos, None)
-                else: # replace even if there is an object of the other type
-                    self.grid.set(*rand_pos, obj)
-                break
-
-        random_float = self.np_random.uniform()
-
-        if random_float < prob_dict["alter_start_pos"]:
-            alter_start_pos()
-
-        elif random_float < prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
-            alter_goal_pos()
-
-        elif random_float < prob_dict["wall"] + prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
-            set_or_remove_obj(Wall())
-
-        elif random_float < prob_dict["lava"] + prob_dict["wall"] + prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
-            set_or_remove_obj(Lava())
-        else:
-            set_or_remove_obj(Sand())
 
         def is_solvable():
             # empirical check: let a random agent take max_steps and see if it visited the goal
@@ -152,7 +82,93 @@ class DynamicMiniGrid(MiniGridEnv):
             self.agent_dir = self.agent_start_dir
             return False
 
-        return is_solvable()
+        def alter_start_pos():
+
+            def goal_in_view(pos, new_pos, dir, new_dir):
+                self.agent_pos = new_pos
+                self.agent_dir = new_dir
+                return_value = self.in_view(*self.goal_pos)
+                # reset the agent after check
+                self.agent_pos = pos
+                self.agent_dir = dir
+                return return_value
+
+            pos = self.agent_start_pos
+            dir = self.agent_start_dir
+            solvable = False
+            while pos == self.agent_start_pos or not solvable:
+                new_pos = (self.np_random.randint(1, self.height - 1), # 1, -1 to avoid boarders
+                           self.np_random.randint(1, self.width - 1))
+                new_dir = self.np_random.randint(0, 4)  # 4 possible directions
+                if self.grid.get(*new_pos) is not None or new_pos == pos: # check field is empty and agent is not there
+                    continue
+                if visibility_check and goal_in_view(pos, new_pos, dir, new_dir):
+                    continue
+                # set the new pos & dir if accepted
+                self.agent_start_pos = new_pos
+                self.agent_pos = new_pos
+                self.agent_start_dir = new_dir
+                self.agent_dir = new_dir
+                solvable = is_solvable()
+
+        def alter_goal_pos():
+            goal_pos = self.goal_pos
+            solvable = is_solvable
+            while goal_pos == self.goal_pos or not solvable:
+                new_goal_pos = (self.np_random.randint(1, self.height-1),
+                            self.np_random.randint(1, self.width-1))
+                if self.grid.get(*new_goal_pos) is not None or new_goal_pos == self.agent_start_pos:
+                    continue
+                if visibility_check and self.in_view(*new_goal_pos):
+                    continue
+                self.goal_pos = new_goal_pos  # change the attribute
+                self.grid.set(*new_goal_pos, Goal())  # change the actual element in the grid
+                self.grid.set(*goal_pos, None)  # remove the previous goal
+                solvable = is_solvable()
+
+        def set_or_remove_obj(obj):
+
+            solvable_and_changed = False
+
+            while not solvable_and_changed:
+
+                rand_pos = (self.np_random.randint(1, self.height-1),
+                            self.np_random.randint(1, self.width-1))
+
+                if rand_pos == self.agent_start_pos or rand_pos == self.goal_pos:
+                    continue
+
+                # first condition needed because NoneType has no attribute type
+                if self.grid.get(*rand_pos) is not None \
+                        and self.grid.get(*rand_pos).type == obj.type:
+
+                    # remove obj
+                    self.grid.set(*rand_pos, None)
+                    solvable_and_changed = True # removing objects can not make it unsolvable
+
+                else:  # replace even if there is an object of the other type
+                    current_obj = self.grid.get(*rand_pos)
+                    self.grid.set(*rand_pos, obj)
+                    solvable_and_changed = is_solvable()
+                    if not solvable_and_changed:
+                        # revert the change before choosing another obj
+                        self.grid.set(*rand_pos, current_obj)
+
+        random_float = self.np_random.uniform()
+
+        if random_float < prob_dict["alter_start_pos"]:
+            alter_start_pos()
+
+        elif random_float < prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
+            alter_goal_pos()
+
+        elif random_float < prob_dict["wall"] + prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
+            set_or_remove_obj(Wall())
+
+        elif random_float < prob_dict["lava"] + prob_dict["wall"] + prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
+            set_or_remove_obj(Lava())
+        else:
+            set_or_remove_obj(Sand())
 
     def respawn(self):
         """ alternative to the reset method (which initializes an empty grid at every timestep"""
