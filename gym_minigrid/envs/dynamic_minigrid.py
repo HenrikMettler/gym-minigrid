@@ -1,8 +1,9 @@
 import numpy as np
 import warnings
+import matplotlib.pyplot as plt
 
 from gym_minigrid.minigrid import MiniGridEnv, Grid, Goal, Lava, Sand, Wall
-
+TILE_PIXELS = 32
 
 class DynamicMiniGrid(MiniGridEnv):
     """
@@ -15,11 +16,10 @@ class DynamicMiniGrid(MiniGridEnv):
         self.agent_start_pos = agent_start_pos
         self.agent_start_dir = agent_start_dir
 
-        self.spatial_novelty_grid = np.zeros([self.width, self.height])
+        self.spatial_novelty_grid = np.zeros([size, size])
 
         super().__init__( grid_size=size, max_steps=4 * size * size,
                           see_through_walls=False, agent_view_size=agent_view_size, seed=seed)
-
 
     def _gen_grid(self, width, height):
         # Create an empty grid
@@ -69,18 +69,18 @@ class DynamicMiniGrid(MiniGridEnv):
         random_float = self.np_random.uniform()
 
         if random_float < prob_dict["alter_start_pos"]:
-            changed_pos = self.alter_start_pos()
+            changed_pos = self.alter_start_pos(visibility_check)
 
         elif random_float < prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
-            changed_pos = self.alter_goal_pos()
+            changed_pos = self.alter_goal_pos(visibility_check)
 
         elif random_float < prob_dict["wall"] + prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
-            changed_pos = self.set_or_remove_obj(Wall())
+            changed_pos = self.set_or_remove_obj(Wall(), visibility_check)
 
         elif random_float < prob_dict["lava"] + prob_dict["wall"] + prob_dict["alter_goal_pos"] + prob_dict["alter_start_pos"]:
-            changed_pos = self.set_or_remove_obj(Lava())
+            changed_pos = self.set_or_remove_obj(Lava(), visibility_check)
         else:
-            changed_pos = self.set_or_remove_obj(Sand())
+            changed_pos = self.set_or_remove_obj(Sand(), visibility_check)
 
         if calculate_spatial_novelty and changed_pos is not None:
             self.update_spatial_novelty_grid(changed_pos, spatial_novelty_distance_decay)
@@ -121,7 +121,7 @@ class DynamicMiniGrid(MiniGridEnv):
         self.agent_dir = self.agent_start_dir
         return False
 
-    def alter_start_pos(self):
+    def alter_start_pos(self, visibility_check):
 
         def goal_in_view(pos, new_pos, dir, new_dir):
             self.agent_pos = new_pos
@@ -145,7 +145,7 @@ class DynamicMiniGrid(MiniGridEnv):
             if self.grid.get(
                     *new_pos) is not None or new_pos == pos:  # check field is empty and agent is not already there
                 continue
-            if self.visibility_check and goal_in_view(pos, new_pos, dir, new_dir):
+            if visibility_check and goal_in_view(pos, new_pos, dir, new_dir):
                 continue
             # set the new pos & dir if accepted
             self.agent_start_pos = new_pos
@@ -160,7 +160,7 @@ class DynamicMiniGrid(MiniGridEnv):
         else:
             return new_pos
 
-    def alter_goal_pos(self):
+    def alter_goal_pos(self, visibility_check):
         goal_pos = self.goal_pos
         n_tries_max = 10 * self.grid.width * self.grid.height
         n_tries = 0
@@ -169,7 +169,7 @@ class DynamicMiniGrid(MiniGridEnv):
                             self.np_random.randint(1, self.width - 1))
             if self.grid.get(*new_goal_pos) is not None or new_goal_pos == self.agent_start_pos:
                 continue
-            if self.visibility_check and self.in_view(*new_goal_pos):
+            if visibility_check and self.in_view(*new_goal_pos):
                 continue
             self.goal_pos = new_goal_pos  # change the attribute
             self.grid.set(*new_goal_pos, Goal())  # change the actual element in the grid
@@ -187,7 +187,7 @@ class DynamicMiniGrid(MiniGridEnv):
         else:
             return new_goal_pos
 
-    def set_or_remove_obj(self, obj):
+    def set_or_remove_obj(self, obj, visibility_check):
 
         solvable_and_changed = False
 
@@ -205,7 +205,11 @@ class DynamicMiniGrid(MiniGridEnv):
 
                 # remove obj
                 self.grid.set(*rand_pos, None)
-                solvable_and_changed = True  # removing objects can not make it unsolvable
+                if visibility_check and self.in_view(*self.goal_pos): # revert the change and keep trying
+                    self.grid.set(*rand_pos, obj)
+                    solvable_and_changed = False
+                else:
+                    solvable_and_changed = True  # removing objects can not make it unsolvable
 
             else:  # replace even if there is an object of the other type
                 current_obj = self.grid.get(*rand_pos)
@@ -234,3 +238,11 @@ class DynamicMiniGrid(MiniGridEnv):
     def reset_spatial_novelty_grid(self):
         self.spatial_novelty_grid = np.zeros([self.width, self.height])
 
+    def visualize_spatial_novelty_grid(self):
+        plt.imshow(self.spatial_novelty_grid)
+
+    def render(self, show_spatial_novelty_grid=True):
+        if show_spatial_novelty_grid:
+            self.visualize_spatial_novelty_grid()
+
+        super(DynamicMiniGrid, self).render(mode='human', close=False, highlight=True, tile_size=TILE_PIXELS)
