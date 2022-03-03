@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from gym_minigrid.minigrid import MiniGridEnv, Grid, Goal, Lava, Sand, Wall
 TILE_PIXELS = 32
 
+
 class DynamicMiniGrid(MiniGridEnv):
     """
     DynamicMiniGrid: Mini Grid Environment, that can dynamically change, by altering a single tile
@@ -90,7 +91,7 @@ class DynamicMiniGrid(MiniGridEnv):
             for y_idx in range(self.height):
                 dist = np.sqrt((changed_pos[0] - x_idx) ** 2 + (changed_pos[1] - y_idx) ** 2)
                 spatial_novelty_intensity = spatial_novelty_distance_decay ** dist
-                self.spatial_novelty_grid[x_idx, y_idx] += spatial_novelty_intensity
+                self.spatial_novelty_grid[y_idx, x_idx] += spatial_novelty_intensity
 
     def is_solvable(self):
         # empirical check: let a random agent take max_steps and see if it visited the goal
@@ -235,11 +236,16 @@ class DynamicMiniGrid(MiniGridEnv):
         obs = self.gen_obs()
         return obs
 
+    def spatial_novelty_grid_time_decay(self, spatial_novelty_decay_factor=0.99):
+        self.spatial_novelty_grid *= spatial_novelty_decay_factor
+
     def reset_spatial_novelty_grid(self):
         self.spatial_novelty_grid = np.zeros([self.width, self.height])
 
     def visualize_spatial_novelty_grid(self):
+        plt.figure(num=111)
         plt.imshow(self.spatial_novelty_grid)
+        plt.colorbar()
 
     def render(self, show_spatial_novelty_grid=True):
         if show_spatial_novelty_grid:
