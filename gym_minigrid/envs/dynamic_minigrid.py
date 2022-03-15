@@ -42,8 +42,22 @@ class DynamicMiniGrid(MiniGridEnv):
 
         self.mission = "get to the green goal square"
 
-    def alter(self, prob_dict, visibility_check=True, calculate_spatial_novelty=True,
-              spatial_novelty_distance_decay=0.5):
+    def alter_env(self, n, prob_alteration_dict, spatial_novelty_distance_decay=0.5, calculate_spatial_novelty=True):
+
+        if spatial_novelty_distance_decay > 1.0:
+            raise ValueError('Spatial novelty signal is increasing with distance. Are you sure about this behavior? '
+                             'Formula: spatial_novelty_distance_decay ** dist')
+
+        self.reset_spatial_novelty_grid()  # reset the spatial novelty grid before alterations
+        altered_positions = set()
+        for _ in range(n):
+            altered_pos = self.alter_single_tile(prob_alteration_dict)
+            if altered_pos is not None:
+                altered_positions.add(tuple(altered_pos))
+        if calculate_spatial_novelty:
+            self.update_spatial_novelty_grid(altered_positions, spatial_novelty_distance_decay)
+
+    def alter_single_tile(self, prob_dict, visibility_check=True):
         """
         Changes a single element of the environment. Automatically checks whether the environment
         can be (empirically in 5000 random steps) solved.
@@ -57,15 +71,11 @@ class DynamicMiniGrid(MiniGridEnv):
             exponentially decaying in distance to the altered tile. Defaults to True
         :param spatial_novelty_distance_decay: float. Base for the exponential decay.
             Formula: spatial_novelty_distance_decay ** dist. Defaults to 0.5
-        :return: None
+        :return: changed pos
         """
 
         if sum(prob_dict.values()) != 1.0:
             raise ValueError('Probabilities do not sum to 1')
-
-        if spatial_novelty_distance_decay > 1.0:
-            raise ValueError('Spatial novelty signal is increasing with distance. Are you sure about this behavior? '
-                             'Formula: spatial_novelty_distance_decay ** dist')
 
         random_float = self.np_random.uniform()
 
@@ -83,15 +93,17 @@ class DynamicMiniGrid(MiniGridEnv):
         else:
             changed_pos = self.set_or_remove_obj(Sand(), visibility_check)
 
-        if calculate_spatial_novelty and changed_pos is not None:
-            self.update_spatial_novelty_grid(changed_pos, spatial_novelty_distance_decay)
+        #if calculate_spatial_novelty and changed_pos is not None:
+        #    self.update_spatial_novelty_grid(changed_pos, spatial_novelty_distance_decay)
+        return changed_pos
 
-    def update_spatial_novelty_grid(self, changed_pos, spatial_novelty_distance_decay):
-        for x_idx in range(self.width):  # for each tile
-            for y_idx in range(self.height):
-                dist = np.sqrt((changed_pos[0] - x_idx) ** 2 + (changed_pos[1] - y_idx) ** 2)
-                spatial_novelty_intensity = spatial_novelty_distance_decay ** dist
-                self.spatial_novelty_grid[y_idx, x_idx] += spatial_novelty_intensity
+    def update_spatial_novelty_grid(self, changed_positions, spatial_novelty_distance_decay):
+        for changed_pos in changed_positions:
+            for x_idx in range(self.width):  # for each tile
+                for y_idx in range(self.height):
+                    dist = np.sqrt((changed_pos[0] - x_idx) ** 2 + (changed_pos[1] - y_idx) ** 2)
+                    spatial_novelty_intensity = spatial_novelty_distance_decay ** dist
+                    self.spatial_novelty_grid[y_idx, x_idx] += spatial_novelty_intensity
 
     def is_solvable(self):
         # empirical check: let a random agent take max_steps and see if it visited the goal
@@ -135,7 +147,6 @@ class DynamicMiniGrid(MiniGridEnv):
 
         pos = self.agent_start_pos
         dir = self.agent_start_dir
-        solvable = False
         n_tries_max = 10 * self.grid.width * self.grid.height
         n_tries = 0
         while (pos == self.agent_start_pos or not self.is_solvable()) and n_tries < n_tries_max:
@@ -155,7 +166,7 @@ class DynamicMiniGrid(MiniGridEnv):
             self.agent_dir = new_dir
 
         if n_tries == n_tries_max:
-            raise EnvironmentError(f"Could not alter the agent start position "
+            raise Warning(f"Could not alter the agent start position "
                           f"in a {n_tries_max} trials. Return without change")
             return None
         else:
@@ -182,7 +193,7 @@ class DynamicMiniGrid(MiniGridEnv):
                 self.grid.set(*new_goal_pos, None)
 
         if n_tries == n_tries_max:
-            raise Warning("Could not alter the agent start position "
+            raise Warning("Could not alter the goal position "
                           "in a reasonable amount of trials. Return without change")
             return None
         else:
