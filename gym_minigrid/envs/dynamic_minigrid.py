@@ -236,8 +236,8 @@ class DynamicMiniGrid(MiniGridEnv):
         obs = self.gen_obs()
         return obs
 
-    def spatial_novelty_grid_time_decay(self, spatial_novelty_decay_factor=0.99):
-        self.spatial_novelty_grid *= spatial_novelty_decay_factor
+    def spatial_novelty_grid_time_decay(self, spatial_novelty_time_decay=0.99):
+        self.spatial_novelty_grid *= spatial_novelty_time_decay
 
     def reset_spatial_novelty_grid(self):
         self.spatial_novelty_grid = np.zeros([self.width, self.height])
