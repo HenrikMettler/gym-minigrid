@@ -42,7 +42,8 @@ class DynamicMiniGrid(MiniGridEnv):
 
         self.mission = "get to the green goal square"
 
-    def alter_env(self, n, prob_alteration_dict, spatial_novelty_distance_decay=0.5, calculate_spatial_novelty=True):
+    def alter_env(self, n_alterations, prob_alteration_dict, spatial_novelty_distance_decay=0.5,
+                  calculate_spatial_novelty=True):
 
         if spatial_novelty_distance_decay > 1.0:
             raise ValueError('Spatial novelty signal is increasing with distance. Are you sure about this behavior? '
@@ -50,7 +51,7 @@ class DynamicMiniGrid(MiniGridEnv):
 
         self.reset_spatial_novelty_grid()  # reset the spatial novelty grid before alterations
         altered_positions = set()
-        for _ in range(n):
+        for _ in range(n_alterations):
             altered_pos = self.alter_single_tile(prob_alteration_dict)
             if altered_pos is not None:
                 altered_positions.add(tuple(altered_pos))
